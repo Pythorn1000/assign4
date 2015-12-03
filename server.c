@@ -1,17 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <ifaddrs.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
 
-#define PORT "30011"  // the port users will be connecting to
+#define RECIEVING_PORT "30011"  // the port recieving clients connect to 
+#define SENDING_PORT "30012"    // the port sending clients connect to 
 
 #define BACKLOG 10     // how many pending connections queue will hold
 
@@ -52,7 +56,7 @@ int main(void)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE; // use my IP
 
-    if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
+    if ((rv = getaddrinfo(NULL, RECIEVING_PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
     }
@@ -80,8 +84,6 @@ int main(void)
         break;
     }
 
-    freeaddrinfo(servinfo); // all done with this structure
-
     if (p == NULL)  {
         fprintf(stderr, "server: failed to bind\n");
         exit(1);
@@ -100,7 +102,30 @@ int main(void)
         exit(1);
     }
 
-    printf("server: waiting for connections...\n");
+
+    printf("use one of the following ip addresses to connect to the server\n");
+    struct ifaddrs *local_devices, *tmp;
+    getifaddrs(&local_devices);
+    tmp = local_devices;
+
+    while (tmp) 
+    {
+        if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET)
+        {
+            struct sockaddr_in *pAddr = (struct sockaddr_in *)tmp->ifa_addr;
+            if (tmp->ifa_name[0] == 'e') { // filtering so that only external ip address appear
+                printf("%s: %s\n", tmp->ifa_name, inet_ntoa(pAddr->sin_addr));
+            }
+        }
+
+        tmp = tmp->ifa_next;
+    }
+
+    freeifaddrs(local_devices);
+
+    printf("\nreciever clients use port %s\n", RECIEVING_PORT);
+    printf("sender clients use port %s\n", SENDING_PORT);
+    printf("\nserver: waiting for connections...\n");
 
     while(1) {  // main accept() loop
         sin_size = sizeof their_addr;
@@ -124,6 +149,8 @@ int main(void)
         }
         close(new_fd);  // parent doesn't need this
     }
+
+    freeaddrinfo(servinfo); // all done with this structure
 
     return 0;
 }
