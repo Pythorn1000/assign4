@@ -142,8 +142,25 @@ int main(void)
 
         if (!fork()) { // this is the child process
             close(sockfd); // child doesn't need the listener
-            if (send(new_fd, "Hello, world!", 13, 0) == -1)
-                perror("send");
+
+            int count = 0;
+            int MAX_SIZE = 128;
+            char *line_ptr = malloc(MAX_SIZE * sizeof(char));
+
+
+            size_t size;
+            if (getline(&line_ptr, &size, stdin) == -1) {
+                printf("No line\n");
+
+            } else {
+                printf("retrieved line was %s\n", line_ptr);
+                if (send(new_fd, line_ptr, MAX_SIZE, 0) == -1) {
+                    perror("send");
+                }
+                count++;
+            }
+            
+            free(line_ptr);
             close(new_fd);
             exit(0);
         }
