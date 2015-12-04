@@ -1,23 +1,26 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <ifaddrs.h>
+#include <arpa/inet.h>
 #include <errno.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <pthread.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netdb.h>
-#include <arpa/inet.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
+#include <unistd.h>
 
 #define RECIEVING_PORT "30011"  // the port recieving clients connect to 
 #define SENDING_PORT "30012"    // the port sending clients connect to 
 
 #define BACKLOG 10     // how many pending connections queue will hold
+
+void *connection_handler(void *); // declaring connection_handler, so it can be used with pthread below
 
 void sigchld_handler(int s)
 {
@@ -39,6 +42,50 @@ void *get_in_addr(struct sockaddr *sa)
 
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
+/*
+ * This will handle connection for each client
+ * */
+void *connection_handler(void *socket_desc)
+{
+    //Get the socket descriptor
+    int sock = *(int*)socket_desc;
+    int read_size;
+    char *message , client_message[2000];
+     
+    //Send some messages to the client
+    message = "Greetings! I am your connection handler\n";
+    write(sock , message , strlen(message));
+     
+    message = "Now type something and i shall repeat what you type \n";
+    write(sock , message , strlen(message));
+     
+    //Receive a message from client
+    while( (read_size = recv(sock , client_message , 2000 , 0)) > 0 )
+    {
+        //end of string marker
+        client_message[read_size] = '\0';
+        
+        //Send the message back to client
+        write(sock , client_message , strlen(client_message));
+        
+        //clear the message buffer
+        memset(client_message, 0, 2000);
+    }
+     
+    if(read_size == 0)
+    {
+        puts("Client disconnected");
+        fflush(stdout);
+    }
+    else if(read_size == -1)
+    {
+        perror("recv failed");
+    }
+         
+    return 0;
+} 
+
 
 int main(void)
 {
@@ -127,46 +174,61 @@ int main(void)
     printf("sender clients use port %s\n", SENDING_PORT);
     printf("\nserver: waiting for connections...\n");
 
-    while(1) {  // main accept() loop
-        sin_size = sizeof their_addr;
-        new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+    pthread_t thread_id;
+    sin_size = sizeof their_addr;
+    while ((new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size))) 
+    {
         if (new_fd == -1) {
             perror("accept");
             continue;
         }
 
-        inet_ntop(their_addr.ss_family,
-            get_in_addr((struct sockaddr *)&their_addr),
-            s, sizeof s);
-        printf("server: got connection from %s\n", s);
-
-        if (!fork()) { // this is the child process
-            close(sockfd); // child doesn't need the listener
-
-
-            int count = 0;
-            int MAX_SIZE = 128;
-            char *line_ptr = malloc(MAX_SIZE * sizeof(char));
-            size_t size;
-            while (1) {
-                
-                if (getline(&line_ptr, &size, stdin) == -1) { // block until a line is available
-                    printf("No line\n");
-
-                } else {
-                    // printf("retrieved line was %s\n", line_ptr);
-                    if (send(new_fd, line_ptr, MAX_SIZE, 0) == -1) {
-                        perror("send");
-                    }
-                    count++;
-                }
-            }
-            free(line_ptr);
-            close(new_fd);
-            exit(0);
+        if( pthread_create( &thread_id, NULL, connection_handler, (void*) &new_fd) < 0)
+        {
+            perror("could not create thread");
+            return 1;
         }
-        close(new_fd);  // parent doesn't need this
     }
+    // while(1) {  // main accept() loop
+    //     sin_size = sizeof their_addr;
+    //     new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+    //     if (new_fd == -1) {
+    //         perror("accept");
+    //         continue;
+    //     }
+
+    //     inet_ntop(their_addr.ss_family,
+    //         get_in_addr((struct sockaddr *)&their_addr),
+    //         s, sizeof s);
+    //     printf("server: got connection from %s\n", s);
+
+    //     if (!fork()) { // this is the child process
+    //         close(sockfd); // child doesn't need the listener
+
+
+    //         int count = 0;
+    //         int MAX_SIZE = 128;
+    //         char *line_ptr = malloc(MAX_SIZE * sizeof(char));
+    //         size_t size;
+    //         while (1) {
+                
+    //             if (getline(&line_ptr, &size, stdin) == -1) { // block until a line is available
+    //                 printf("No line\n");
+
+    //             } else {
+    //                 // printf("retrieved line was %s\n", line_ptr);
+    //                 if (send(new_fd, line_ptr, MAX_SIZE, 0) == -1) {
+    //                     perror("send");
+    //                 }
+    //                 count++;
+    //             }
+    //         }
+    //         free(line_ptr);
+    //         close(new_fd);
+    //         exit(0);
+    //     }
+    //     close(new_fd);  // parent doesn't need this
+    // }
 
     freeaddrinfo(servinfo); // all done with this structure
 
