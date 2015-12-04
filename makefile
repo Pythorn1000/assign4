@@ -5,5 +5,5 @@ assign4: server.c client.c
 	gcc -o write_client.o write_client.c -g
 
 .PHONY: clean
-clean:
+clean:ed
 	rm -rf *.o *.dSYM
