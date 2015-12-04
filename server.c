@@ -19,6 +19,7 @@
 #define SENDING_PORT "30012"    // the port sending clients connect to 
 
 #define BACKLOG 10     // how many pending connections queue will hold
+#define MAX_MSG_SIZE 2000
 
 void *connection_handler(void *); // declaring connection_handler, so it can be used with pthread below
 
